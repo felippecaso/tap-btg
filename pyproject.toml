@@ -1,0 +1,51 @@
+[tool.poetry]
+name = "tap-btg"
+version = "0.0.1"
+description = "`tap-btg` is a Singer tap for BTG, built with the Meltano Singer SDK."
+readme = "README.md"
+authors = ["Felippe Felisola"]
+keywords = [
+    "ELT",
+    "BTG",
+]
+license = "Apache 2.0"
+
+[tool.poetry.dependencies]
+python = "==3.9.13"
+singer-sdk = { version="^0.20.0"}
+fs-s3fs = { version = "^1.1.1", optional = true}
+pandas = "^1.5.3"
+tabula = "^1.0.5"
+tabula-py = "^2.6.0"
+pypdf = "^3.4.1"
+pyexcel = "^0.7.0"
+pyexcel-xls = "^0.7.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.2.1"
+flake8 = "^5.0.4"
+darglint = "^1.8.1"
+black = "^23.1.0"
+pyupgrade = "^3.3.1"
+mypy = "^1.0.0"
+isort = "^5.11.5"
+
+[tool.poetry.extras]
+s3 = ["fs-s3fs"]
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3 # Vertical Hanging Indent
+src_paths = "tap_btg"
+
+[tool.mypy]
+python_version = "3.9"
+warn_unused_configs = true
+
+[build-system]
+requires = ["poetry-core>=1.0.8"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+# CLI declaration
+tap-btg = 'tap_btg.tap:TapBTG.cli'
