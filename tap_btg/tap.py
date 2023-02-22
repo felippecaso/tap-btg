@@ -23,6 +23,7 @@ class TapBTG(Tap):
     name = "tap-btg"
 
     config_jsonschema = th.PropertiesList(
+        th.Property("file_password", th.StringType, secret=True),
         th.Property(
             "files",
             th.ArrayType(
@@ -38,7 +39,6 @@ class TapBTG(Tap):
                             "credit_transactions",
                         ],
                     ),
-                    th.Property("file_password", th.StringType, secret=True),
                 )
             ),
             description="An array of file stream settings.",

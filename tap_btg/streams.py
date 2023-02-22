@@ -114,7 +114,7 @@ class CreditTransactionsStream(BTGStream):
         Yields:
             yields: Records based on the processed data.
         """
-        file_password = self.file_config.get("file_password")
+        file_password = self.config.get("file_password")
         if not file_password:
             self.logger.error("file_password is missing.")
         else:
