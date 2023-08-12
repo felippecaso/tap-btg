@@ -5,9 +5,11 @@ from __future__ import annotations
 import locale
 import os
 import re
+import tempfile
 from time import strptime
 from typing import Iterable, List
 
+import boto3
 import numpy as np
 import pandas as pd
 import pyexcel as pe
@@ -29,6 +31,52 @@ class InvestmentsTransactionsStream(BTGStream):
         th.Property("amount", th.NumberType, required=True),
     ).to_dict()
 
+    def read_pdf_from_s3(self, s3_bucket: str, s3_key: str):
+        # Use boto3 to download the file from S3 and then read it
+        s3_client = boto3.client("s3")
+        response = s3_client.get_object(Bucket=s3_bucket, Key=s3_key)
+        pdf_content = response["Body"].read()
+
+        # Create a temporary file-like object for tabula to read from
+        with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+            temp_file.write(pdf_content)
+            temp_file_path = temp_file.name
+
+        try:
+            num_pages = self.get_pdf_num_pages(temp_file_path)
+            tabula_reader = tabula.read_pdf(
+                temp_file_path,
+                pages=f"2-{num_pages}",
+                multiple_tables=False,
+                area=[17, 17, 794, 580],
+                columns=[94, 340, 420, 505],
+                pandas_options={"header": None},
+                silent=True,
+            )
+        finally:
+            # Clean up the temporary file
+            os.remove(temp_file_path)
+        return tabula_reader
+
+    def read_pdf_from_local(self, file_path: str):
+        num_pages = self.get_pdf_num_pages(file_path)
+        tabula_reader = tabula.read_pdf(
+            file_path,
+            pages=f"2-{num_pages}",
+            multiple_tables=False,
+            area=[17, 17, 794, 580],
+            columns=[94, 340, 420, 505],
+            pandas_options={"header": None},
+            silent=True,
+        )
+        return tabula_reader
+
+    def get_pdf_num_pages(self, file_path: str) -> int:
+        with open(file_path, "rb") as o:
+            reader = PdfReader(o)
+            num_pages: int = len(reader.pages)
+        return num_pages
+
     def get_records(self, context: dict | None) -> Iterable[dict]:
         """Yield a generator of record-type dictionary objects.
 
@@ -41,20 +89,11 @@ class InvestmentsTransactionsStream(BTGStream):
             yields: Records based on the processed data.
         """
         for file_path in self.get_file_paths():
-            filename = file_path
-            with open(filename, "rb") as o:
-                reader = PdfReader(o)
-                num_pages: int = len(reader.pages)
-
-            tabula_reader = tabula.read_pdf(
-                filename,
-                pages=f"2-{num_pages}",
-                multiple_tables=False,
-                area=[17, 17, 794, 580],
-                columns=[94, 340, 420, 505],
-                pandas_options={"header": None},
-                silent=True,
-            )
+            if file_path.startswith("s3://"):
+                s3_bucket, s3_key = file_path.split("/", 3)[2:]
+                tabula_reader = self.read_pdf_from_s3(s3_bucket, s3_key)
+            else:
+                tabula_reader = self.read_pdf_from_local(file_path)
 
             btg_investments_raw: pd.DataFrame = tabula_reader[0]  # type: ignore
 
@@ -103,6 +142,58 @@ class CreditTransactionsStream(BTGStream):
         th.Property("bill_month", th.DateTimeType, required=True),
     ).to_dict()
 
+    def read_pdf_from_s3(self, s3_bucket: str, s3_key: str, file_password: str):
+        # Use boto3 to download the file from S3 and then read it
+        s3_client = boto3.client("s3")
+        response = s3_client.get_object(Bucket=s3_bucket, Key=s3_key)
+        pdf_content = response["Body"].read()
+
+        # Create a temporary file-like object for tabula to read from
+        with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+            temp_file.write(pdf_content)
+            temp_file_path = temp_file.name
+
+        try:
+            btg_credit_raw_list: List[pd.DataFrame] = tabula.read_pdf(
+                temp_file_path,
+                pages="all",
+                password=file_password,
+                stream=True,
+                guess=False,
+                columns=[70, 225, 300, 340, 490, 562],
+                pandas_options={"header": None},
+                silent=True,
+            )  # type: ignore
+        finally:
+            # Clean up the temporary file
+            os.remove(temp_file_path)
+        return btg_credit_raw_list
+
+    def read_pdf_from_local(self, file_path: str, file_password: str):
+        btg_credit_raw_list: List[pd.DataFrame] = tabula.read_pdf(
+            file_path,
+            pages="all",
+            password=file_password,
+            stream=True,
+            guess=False,
+            columns=[70, 225, 300, 340, 490, 562],
+            pandas_options={"header": None},
+            silent=True,
+        )  # type: ignore
+        return btg_credit_raw_list
+
+    @staticmethod
+    def extract_file_name(file_path: str) -> str:
+        if file_path.startswith("s3://"):
+            # Extract the S3 key from the URL and remove the file extension
+            s3_key = file_path.split("/")[-1]
+            file_name_without_extension = s3_key.rsplit(".", 1)[0]
+        else:
+            # Extract the file name and remove the file extension
+            file_name = os.path.basename(file_path)
+            file_name_without_extension = os.path.splitext(file_name)[0]
+        return file_name_without_extension
+
     def get_records(self, context: dict | None) -> Iterable[dict]:
         """Yield a generator of record-type dictionary objects.
 
@@ -119,28 +210,26 @@ class CreditTransactionsStream(BTGStream):
             self.logger.error("file_password is missing.")
         else:
             for file_path in self.get_file_paths():
-                filename = file_path
+                if file_path.endswith(".pdf"):
+                    if file_path.startswith("s3://"):
+                        s3_bucket, s3_key = file_path.split("/", 3)[2:]
+                        btg_credit_raw_list = self.read_pdf_from_s3(
+                            s3_bucket, s3_key, file_password
+                        )
+                    else:
+                        btg_credit_raw_list = self.read_pdf_from_local(
+                            file_path, file_password
+                        )
 
-                if filename.endswith(".pdf"):
                     file_year, file_month = [
                         int(
-                            re.findall(r"(\d{4})-(\d{2})", os.path.basename(filename))[
-                                0
-                            ][i]
+                            re.findall(
+                                r"(\d{4})-(\d{2})", self.extract_file_name(file_path)
+                            )[0][i]
                         )
                         for i in (0, 1)
                     ]
 
-                    btg_credit_raw_list: List[pd.DataFrame] = tabula.read_pdf(
-                        filename,
-                        pages="all",
-                        password=file_password,
-                        stream=True,
-                        guess=False,
-                        columns=[70, 225, 300, 340, 490, 562],
-                        pandas_options={"header": None},
-                        silent=True,
-                    )  # type: ignore
                     btg_credit_raw: pd.DataFrame = pd.concat(btg_credit_raw_list[1:])
 
                     condition_1 = btg_credit_raw.iloc[:, 0].str.contains(
@@ -248,6 +337,38 @@ class BankingTransactionsStream(BTGStream):
         th.Property("amount", th.NumberType, required=True),
     ).to_dict()
 
+    def read_xls_from_s3(self, s3_bucket: str, s3_key: str):
+        # Use boto3 to download the file from S3 and then read it
+        s3_client = boto3.client("s3")
+        response = s3_client.get_object(Bucket=s3_bucket, Key=s3_key)
+        xls_content = response["Body"].read()
+
+        # Create a temporary file-like object for tabula to read from
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".xls") as temp_file:
+            temp_file.write(xls_content)
+            temp_file_path = temp_file.name
+
+        try:
+            sheet = pe.get_records(
+                file_name=temp_file_path,
+                start_column=1,
+                start_row=10,
+                name_columns_by_row=0,
+            )
+        finally:
+            # Clean up the temporary file
+            os.remove(temp_file_path)
+        return sheet
+
+    def read_xls_from_local(self, file_path: str):
+        sheet = pe.get_records(
+            file_name=file_path,
+            start_column=1,
+            start_row=10,
+            name_columns_by_row=0,
+        )
+        return sheet
+
     def get_records(self, context: dict | None) -> Iterable[dict]:
         """Yield a generator of record-type dictionary objects.
 
@@ -260,15 +381,12 @@ class BankingTransactionsStream(BTGStream):
             yields: Records based on the processed data.
         """
         for file_path in self.get_file_paths():
-            filename = file_path
-
-            if filename.endswith(".xls"):
-                sheet = pe.get_records(
-                    file_name=filename,
-                    start_column=1,
-                    start_row=10,
-                    name_columns_by_row=0,
-                )
+            if file_path.endswith(".xls"):
+                if file_path.startswith("s3://"):
+                    s3_bucket, s3_key = file_path.split("/", 3)[2:]
+                    sheet = self.read_xls_from_s3(s3_bucket, s3_key)
+                else:
+                    sheet = self.read_xls_from_local(file_path)
                 btg_banking: pd.DataFrame = pd.DataFrame(sheet)
 
                 btg_banking = btg_banking[

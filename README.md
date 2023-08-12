@@ -100,12 +100,6 @@ poetry run tap-btg --help
 _**Note:** This tap will work in any Singer environment and does not require Meltano.
 Examples here are for convenience and to streamline end-to-end orchestration scenarios._
 
-<!--
-Developer TODO:
-Your project comes with a custom `meltano.yml` project file already created. Open the `meltano.yml` and follow any "TODO" items listed in
-the file.
--->
-
 Next, install Meltano (if you haven't already) and any needed plugins:
 
 ```bash
