@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import locale
 import os
 import re
 import tempfile
-from time import strptime
+import dateparser
 from typing import Iterable, List
 
 import boto3
@@ -18,9 +17,6 @@ from pypdf import PdfReader
 from singer_sdk import typing as th  # JSON Schema typing helpers
 
 from tap_btg.client import BTGStream
-
-os.environ["LC_ALL"] = "C"
-locale.setlocale(locale.LC_ALL, "pt_BR.UTF-8")
 
 
 class InvestmentsTransactionsStream(BTGStream):
@@ -281,7 +277,11 @@ class CreditTransactionsStream(BTGStream):
                     btg_credit["amount"] = pd.to_numeric(btg_credit["amount"])
 
                     def _get_transaction_year(df):
-                        if (file_month - strptime(df["date"][-3:], "%b").tm_mon) < 0:
+                        if (file_month - dateparser.parse(
+                            df["date"][-3:],
+                            date_formats=["%b"],
+                            languages=["pt"]
+                        ).month) < 0:
                             return file_year - 1
                         else:
                             return file_year
@@ -289,10 +289,18 @@ class CreditTransactionsStream(BTGStream):
                     btg_credit["transaction_year"] = btg_credit.apply(
                         _get_transaction_year, axis=1
                     ).astype(str)
-                    btg_credit["date"] = pd.to_datetime(
-                        btg_credit["date"] + " " + btg_credit["transaction_year"],
-                        format="%d %b %Y",
+
+                    def _create_transaction_date(df):
+                        return dateparser.parse(
+                            df["date"] + " " + df["transaction_year"],
+                            date_formats=["%d %^b %Y"],
+                            languages=["pt"]
+                        )
+
+                    btg_credit["date"] = btg_credit.apply(
+                        _create_transaction_date, axis=1
                     )
+
                     btg_credit.drop("transaction_year", axis=1, inplace=True)
 
                     btg_credit["installment_number"] = (
