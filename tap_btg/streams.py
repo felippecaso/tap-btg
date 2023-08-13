@@ -19,6 +19,7 @@ from singer_sdk import typing as th  # JSON Schema typing helpers
 
 from tap_btg.client import BTGStream
 
+os.environ["LC_ALL"] = "C"
 locale.setlocale(locale.LC_ALL, "pt_BR.UTF-8")
 
 
