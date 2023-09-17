@@ -173,7 +173,7 @@ class CreditTransactionsStream(BTGStream):
             password=file_password,
             stream=True,
             guess=False,
-            columns=[70, 215, 300, 340, 490, 562],
+            columns=[70, 225, 300, 340, 490, 562],
             pandas_options={"header": None},
             silent=True,
         )  # type: ignore
@@ -207,6 +207,7 @@ class CreditTransactionsStream(BTGStream):
             self.logger.error("file_password is missing.")
         else:
             for file_path in self.get_file_paths():
+                self.logger.info(f"Syncing file {file_path}")
                 if file_path.endswith(".pdf"):
                     if file_path.startswith("s3://"):
                         s3_bucket, s3_key = file_path.split("/", 3)[2:]
@@ -255,7 +256,7 @@ class CreditTransactionsStream(BTGStream):
                     btg_credit.dropna(how="all", inplace=True)
 
                     usd_transactions_mask = btg_credit["amount"].str.contains(
-                        "US$", regex=False
+                        "S$", regex=False
                     )
                     for i in btg_credit.loc[usd_transactions_mask].index:
                         btg_credit.loc[i, "amount"] = btg_credit.loc[i + 2, "amount"]
@@ -267,11 +268,6 @@ class CreditTransactionsStream(BTGStream):
                         btg_credit["amount"].str.startswith("-"),
                         btg_credit["amount"].str.lstrip("- R$"),
                         "-" + btg_credit["amount"].str.lstrip("R$ "),
-                    )
-                    btg_credit["amount"] = np.where(
-                        btg_credit["amount"].str.startswith("-"),
-                        btg_credit["amount"].str.lstrip("- US$"),
-                        "-" + btg_credit["amount"].str.lstrip("US$ "),
                     )
                     btg_credit["amount"] = btg_credit["amount"].str.replace(
                         ".", "", regex=False
@@ -297,8 +293,6 @@ class CreditTransactionsStream(BTGStream):
                             date_formats=["%d %^b %Y"],
                             languages=["pt"]
                         )
-
-                    btg_credit["date"] = btg_credit["date"].astype(str)
 
                     btg_credit["transaction_year"] = btg_credit.apply(
                         _get_transaction_year, axis=1
