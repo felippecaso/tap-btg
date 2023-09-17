@@ -291,16 +291,18 @@ class CreditTransactionsStream(BTGStream):
                         else:
                             return file_year
 
-                    btg_credit["transaction_year"] = btg_credit.apply(
-                        _get_transaction_year, axis=1
-                    ).astype(str)
-
                     def _create_transaction_date(df):
                         return dateparser.parse(
                             df["date"] + " " + df["transaction_year"],
                             date_formats=["%d %^b %Y"],
                             languages=["pt"]
                         )
+
+                    btg_credit["date"] = btg_credit["date"].astype(str)
+
+                    btg_credit["transaction_year"] = btg_credit.apply(
+                        _get_transaction_year, axis=1
+                    ).astype(str)
 
                     btg_credit["date"] = btg_credit.apply(
                         _create_transaction_date, axis=1
