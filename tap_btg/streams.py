@@ -268,6 +268,11 @@ class CreditTransactionsStream(BTGStream):
                         btg_credit["amount"].str.lstrip("- R$"),
                         "-" + btg_credit["amount"].str.lstrip("R$ "),
                     )
+                    btg_credit["amount"] = np.where(
+                        btg_credit["amount"].str.startswith("-"),
+                        btg_credit["amount"].str.lstrip("- US$"),
+                        "-" + btg_credit["amount"].str.lstrip("US$ "),
+                    )
                     btg_credit["amount"] = btg_credit["amount"].str.replace(
                         ".", "", regex=False
                     )
