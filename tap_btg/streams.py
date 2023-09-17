@@ -173,7 +173,7 @@ class CreditTransactionsStream(BTGStream):
             password=file_password,
             stream=True,
             guess=False,
-            columns=[70, 225, 300, 340, 490, 562],
+            columns=[70, 215, 300, 340, 490, 562],
             pandas_options={"header": None},
             silent=True,
         )  # type: ignore
